@@ -1,6 +1,6 @@
 {
   "name": "@mattkrick/graphql-trebuchet-client",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "A graphql client to get your subscriptions through tough firewalls and unreliable mobile networks",
   "author": "Matt Krick <matt.krick@gmail.com>",
   "main": "dist/index.js",
