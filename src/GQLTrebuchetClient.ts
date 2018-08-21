@@ -1,4 +1,15 @@
-import {CLOSE, DATA, Trebuchet} from '@mattkrick/trebuchet-client'
+import {Events, Trebuchet} from '@mattkrick/trebuchet-client'
+
+export enum ServerMessageTypes {
+  GQL_START = 'start',
+  GQL_STOP = 'stop'
+}
+
+export enum ClientMessageTypes {
+  GQL_DATA = 'data',
+  GQL_ERROR = 'error',
+  GQL_COMPLETE = 'complete'
+}
 
 export interface ErrorObj {
   message: string
@@ -39,64 +50,69 @@ export interface Operations {
 export type OutgoingMessage = StartMessage | StopMessage
 
 export interface StartMessage {
+  type: ServerMessageTypes.GQL_START
   id?: string
-  type: 'start'
   payload: OperationPayload
   connectionId?: string
 }
 
 export interface StopMessage {
+  type: ServerMessageTypes.GQL_STOP
   id: string
-  type: 'stop'
   connectionId?: string
 }
 
 export interface IncomingMessage {
   id: string
-  type: 'data' | 'error' | 'complete'
+  type: ClientMessageTypes
   payload: GraphQLResult
 }
 
-export const GQL_DATA = 'data' // Server -> Client
-export const GQL_ERROR = 'error' // Server -> Client
-export const GQL_COMPLETE = 'complete' // Server -> Client
-
-export const GQL_START = 'start' // Client -> Server
-export const GQL_STOP = 'stop' // Client -> Server
-
 class GQLTrebuchetClient {
+  isTrebuchetClosed: boolean = false
   operations: Operations = {}
   private nextOperationId: number = 0
 
   constructor (public trebuchet: Trebuchet) {
-    trebuchet.on(DATA, (data: string | object) => {
+    trebuchet.on(Events.DATA, (data: string | object) => {
       this.dispatch(typeof data === 'string' ? JSON.parse(data) : data)
     })
-    trebuchet.on(CLOSE, (reason?: string) => {
+    trebuchet.on(Events.CLOSE, (reason?: string) => {
+      this.isTrebuchetClosed = true
       this.close(reason)
+    })
+    trebuchet.on(Events.TRANSPORT_DISCONNECTED, () => {
+      // queue up the start subscription messages
+      Object.keys(this.operations).forEach((opId) => {
+        this.send({
+          id: opId,
+          type: ServerMessageTypes.GQL_START,
+          payload: this.operations[opId].payload
+        })
+      })
     })
   }
 
   private dispatch (message: IncomingMessage) {
     const {id: opId} = message
-    if (opId && !this.operations[opId]) {
+    if (!this.operations[opId]) {
       this.unsubscribe(opId)
       return
     }
+    const {onCompleted, onError, onNext} = this.operations[opId].observer
     switch (message.type) {
-      case GQL_COMPLETE:
-        this.operations[opId].observer.onCompleted()
+      case ClientMessageTypes.GQL_COMPLETE:
+        onCompleted()
         delete this.operations[opId]
         break
 
-      case GQL_ERROR:
-        this.operations[opId].observer.onError(message.payload)
+      case ClientMessageTypes.GQL_ERROR:
+        onError(message.payload.errors)
         delete this.operations[opId]
         break
 
-      case GQL_DATA:
-        this.operations[opId].observer.onNext(message.payload)
-        break
+      case ClientMessageTypes.GQL_DATA:
+        onNext(message.payload)
     }
   }
 
@@ -112,7 +128,9 @@ class GQLTrebuchetClient {
     Object.keys(this.operations).forEach((opId) => {
       this.unsubscribe(opId)
     })
-    this.trebuchet.close(reason)
+    if (!this.isTrebuchetClosed) {
+      this.trebuchet.close(reason)
+    }
   }
 
   fetch (payload: OperationPayload) {
@@ -128,7 +146,9 @@ class GQLTrebuchetClient {
           },
           onError: (errors) => {
             delete this.operations[opId]
-            reject(errors && errors[0])
+            // no UI needs to handle a possible array of cryptic errors. change my mind
+            const firstError = Array.isArray(errors) ? errors[0] : errors
+            reject(firstError.message || firstError)
           },
           onCompleted: () => {
             // server should never send this for a fetch
@@ -136,7 +156,7 @@ class GQLTrebuchetClient {
           }
         }
       }
-      this.send({id: opId, type: GQL_START, payload})
+      this.send({id: opId, type: ServerMessageTypes.GQL_START, payload})
     })
   }
 
@@ -147,7 +167,7 @@ class GQLTrebuchetClient {
       payload,
       observer
     }
-    this.send({id: opId, type: GQL_START, payload})
+    this.send({id: opId, type: ServerMessageTypes.GQL_START, payload})
     const unsubscribe = () => {
       this.unsubscribe(opId)
     }
@@ -157,7 +177,7 @@ class GQLTrebuchetClient {
   private unsubscribe (opId: string) {
     if (this.operations[opId]) {
       delete this.operations[opId]
-      this.send({id: opId, type: GQL_STOP})
+      this.send({id: opId, type: ServerMessageTypes.GQL_STOP})
     }
   }
 }

@@ -1,6 +1,6 @@
 # graphql-trebuchet-client
 
-A graphql client to get subscriptions through the toughest corporate firewalls 
+A graphql client to get your subscriptions through tough firewalls and unreliable mobile networks
 
 ## Why?
 
@@ -12,10 +12,11 @@ This gets through them, one way or another.
 
 - Follows the trebuchet protocol to ensure that your subscriptions always work
 - Keeps track of your fetches & subscriptions
+- Resubscribes when the connection is ended prematurely
 
 ## How's it different from other graphql client libs?
 
-- Unlike other libs, this lib won't fail silently when WebSockets fail, causing grumpy perspective users to bail
+- Unlike other libs, this lib won't fail silently when WebSockets fail, causing confused prospective users to bail
 - This lib has a pure separation of concerns between connectivity & GraphQL messages. 
 Other libs do too much so they can lock you into their monolithic trap (don't get got!)
  
@@ -23,7 +24,8 @@ Other libs do too much so they can lock you into their monolithic trap (don't ge
 
 These are the methods you'll probably want to call.
 - `fetch({query, variables}): Promise<GraphQLExecutionResult>`: Call this for all queries/mutations 
-- `subscribe({query, variables}, {onNext, onError, onCompleted}): Disposable`: Call this to start/stop subscriptions
+- `subscribe({query, variables}, {onNext, onError, onCompleted}): Disposable`: Call this to start a subscription. 
+Call the return value to stop it.
 - `close()`: Unsubscribe from everything and prevent a reconnect. Useful for logouts.
 
 ## Example
