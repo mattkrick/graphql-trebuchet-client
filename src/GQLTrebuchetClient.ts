@@ -12,11 +12,14 @@ export enum ClientMessageTypes {
 }
 
 export interface ErrorObj {
+  name: string
   message: string
+  stack?: string
 }
 
 export interface OperationPayload {
-  query: string
+  documentId?: string
+  query?: string
   variables?: {
     [key: string]: string | object
   }
@@ -32,8 +35,8 @@ export interface GraphQLResult {
 }
 
 export interface Observer {
-  onNext: (result: any) => void
-  onError: (error: any) => void
+  onNext: (result: {[key: string]: any}) => void
+  onError: (error: Array<ErrorObj>) => void
   onCompleted: () => void
 }
 
@@ -107,7 +110,7 @@ class GQLTrebuchetClient {
         break
 
       case ClientMessageTypes.GQL_ERROR:
-        onError(message.payload.errors)
+        onError(message.payload.errors!)
         delete this.operations[opId]
         break
 
