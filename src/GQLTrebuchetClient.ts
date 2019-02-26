@@ -21,7 +21,7 @@ export interface OperationPayload {
   documentId?: string
   query?: string
   variables?: {
-    [key: string]: string | object
+    [key: string]: any
   }
 }
 
