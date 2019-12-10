@@ -35,7 +35,7 @@
     ]
   },
   "devDependencies": {
-    "@mattkrick/trebuchet-client": "^0.1.0",
+    "@mattkrick/trebuchet-client": "^0.3.0",
     "@types/backo2": "^1.0.0",
     "@types/eventemitter2": "^4.1.0",
     "awesome-typescript-loader": "^5.2.0",
@@ -57,6 +57,6 @@
   "typings": "dist/types/index.d.ts",
   "license": "MIT",
   "peerDependencies": {
-    "@mattkrick/trebuchet-client": "^0.1.0"
+    "@mattkrick/trebuchet-client": "^0.3.0"
   }
 }

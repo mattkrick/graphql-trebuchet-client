@@ -80,7 +80,7 @@ class GQLTrebuchetClient {
     trebuchet.on(Events.DATA, (data: string | object) => {
       this.dispatch(typeof data === 'string' ? JSON.parse(data) : data)
     })
-    trebuchet.on(Events.CLOSE, (reason?: string) => {
+    trebuchet.on(Events.CLOSE, ({reason}: {reason?: string}) => {
       this.isTrebuchetClosed = true
       this.close(reason)
     })
