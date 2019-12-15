@@ -58,6 +58,6 @@
   "typings": "dist/types/index.d.ts",
   "license": "MIT",
   "peerDependencies": {
-    "@mattkrick/trebuchet-client": "^0.3.0"
+    "@mattkrick/trebuchet-client": "^1.0.0"
   }
 }
