@@ -1,17 +1,14 @@
-import {ServerMessageTypes, IncomingMessage, OperationPayload} from './GQLTrebuchetClient'
+import {IncomingCompleteMessage, IncomingErrorMessage, OperationPayload} from './GQLTrebuchetClient'
+import {Sink} from 'relay-runtime/lib/network/RelayObservable'
 
-type BasicStartMessageString = string
+export type FetchData = (data: any) => Promise<IncomingErrorMessage | IncomingCompleteMessage>
 
-export type FetchData = (data: BasicStartMessageString) => Promise<IncomingMessage>
-
-class GQLHTTPClient {
+export default class GQLHTTPClient {
   constructor (public fetchData: FetchData) {}
 
-  async fetch (operationPayload: OperationPayload) {
-    const res = await this.fetchData(
-      JSON.stringify({type: ServerMessageTypes.GQL_START, payload: operationPayload})
-    )
-    return res.payload
+  async fetch (payload: OperationPayload, sink: Sink<any>) {
+    const res = await this.fetchData({type: 'start', payload})
+    sink.next(res.payload)
+    sink.complete()
   }
 }
-export default GQLHTTPClient

@@ -1,10 +1,9 @@
-import { IncomingMessage, OperationPayload } from './GQLTrebuchetClient';
-declare type BasicStartMessageString = string;
-export declare type FetchData = (data: BasicStartMessageString) => Promise<IncomingMessage>;
-declare class GQLHTTPClient {
+import { IncomingCompleteMessage, IncomingErrorMessage, OperationPayload } from './GQLTrebuchetClient';
+import { Sink } from 'relay-runtime/lib/network/RelayObservable';
+export declare type FetchData = (data: any) => Promise<IncomingErrorMessage | IncomingCompleteMessage>;
+export default class GQLHTTPClient {
     fetchData: FetchData;
     constructor(fetchData: FetchData);
-    fetch(operationPayload: OperationPayload): Promise<import("./GQLTrebuchetClient").GraphQLResult>;
+    fetch(payload: OperationPayload, sink: Sink<any>): Promise<void>;
 }
-export default GQLHTTPClient;
 //# sourceMappingURL=GQLHTTPClient.d.ts.map

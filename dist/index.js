@@ -96,18 +96,17 @@ module.exports =
 
 "use strict";
 __webpack_require__.r(__webpack_exports__);
-/* harmony import */ var _GQLTrebuchetClient__WEBPACK_IMPORTED_MODULE_0__ = __webpack_require__(/*! ./GQLTrebuchetClient */ "./src/GQLTrebuchetClient.ts");
-
+/* harmony export (binding) */ __webpack_require__.d(__webpack_exports__, "default", function() { return GQLHTTPClient; });
 class GQLHTTPClient {
     constructor(fetchData) {
         this.fetchData = fetchData;
     }
-    async fetch(operationPayload) {
-        const res = await this.fetchData(JSON.stringify({ type: _GQLTrebuchetClient__WEBPACK_IMPORTED_MODULE_0__["ServerMessageTypes"].GQL_START, payload: operationPayload }));
-        return res.payload;
+    async fetch(payload, sink) {
+        const res = await this.fetchData({ type: 'start', payload });
+        sink.next(res.payload);
+        sink.complete();
     }
 }
-/* harmony default export */ __webpack_exports__["default"] = (GQLHTTPClient);
 
 
 /***/ }),
@@ -116,45 +115,24 @@ class GQLHTTPClient {
 /*!***********************************!*\
   !*** ./src/GQLTrebuchetClient.ts ***!
   \***********************************/
-/*! exports provided: ServerMessageTypes, ClientMessageTypes, default */
+/*! exports provided: default */
 /***/ (function(module, __webpack_exports__, __webpack_require__) {
 
 "use strict";
 __webpack_require__.r(__webpack_exports__);
-/* harmony export (binding) */ __webpack_require__.d(__webpack_exports__, "ServerMessageTypes", function() { return ServerMessageTypes; });
-/* harmony export (binding) */ __webpack_require__.d(__webpack_exports__, "ClientMessageTypes", function() { return ClientMessageTypes; });
-/* harmony import */ var _mattkrick_trebuchet_client__WEBPACK_IMPORTED_MODULE_0__ = __webpack_require__(/*! @mattkrick/trebuchet-client */ "@mattkrick/trebuchet-client");
-/* harmony import */ var _mattkrick_trebuchet_client__WEBPACK_IMPORTED_MODULE_0___default = /*#__PURE__*/__webpack_require__.n(_mattkrick_trebuchet_client__WEBPACK_IMPORTED_MODULE_0__);
-
-var ServerMessageTypes;
-(function (ServerMessageTypes) {
-    ServerMessageTypes["GQL_START"] = "start";
-    ServerMessageTypes["GQL_STOP"] = "stop";
-})(ServerMessageTypes || (ServerMessageTypes = {}));
-var ClientMessageTypes;
-(function (ClientMessageTypes) {
-    ClientMessageTypes["GQL_DATA"] = "data";
-    ClientMessageTypes["GQL_ERROR"] = "error";
-    ClientMessageTypes["GQL_COMPLETE"] = "complete";
-})(ClientMessageTypes || (ClientMessageTypes = {}));
 class GQLTrebuchetClient {
     constructor(trebuchet) {
         this.trebuchet = trebuchet;
-        this.isTrebuchetClosed = false;
         this.operations = {};
         this.nextOperationId = 0;
-        trebuchet.on(_mattkrick_trebuchet_client__WEBPACK_IMPORTED_MODULE_0__["Events"].DATA, (data) => {
-            this.dispatch(typeof data === 'string' ? JSON.parse(data) : data);
+        trebuchet.on('data', (data) => {
+            this.dispatch(data);
         });
-        trebuchet.on(_mattkrick_trebuchet_client__WEBPACK_IMPORTED_MODULE_0__["Events"].CLOSE, ({ reason }) => {
-            this.isTrebuchetClosed = true;
-            this.close(reason);
-        });
-        trebuchet.on(_mattkrick_trebuchet_client__WEBPACK_IMPORTED_MODULE_0__["Events"].TRANSPORT_DISCONNECTED, () => {
+        trebuchet.on('reconnected', () => {
             Object.keys(this.operations).forEach((opId) => {
-                this.send({
+                this.trebuchet.send({
                     id: opId,
-                    type: ServerMessageTypes.GQL_START,
+                    type: 'start',
                     payload: this.operations[opId].payload
                 });
             });
@@ -162,80 +140,69 @@ class GQLTrebuchetClient {
     }
     dispatch(message) {
         const { id: opId } = message;
-        if (!this.operations[opId]) {
-            this.unsubscribe(opId);
+        const operation = this.operations[opId];
+        if (!operation)
             return;
-        }
-        const { onCompleted, onError, onNext } = this.operations[opId].observer;
+        const { sink } = operation;
         switch (message.type) {
-            case ClientMessageTypes.GQL_COMPLETE:
-                onCompleted();
+            case 'complete':
                 delete this.operations[opId];
+                if (message.payload) {
+                    sink.next(message.payload);
+                }
+                sink.complete();
                 break;
-            case ClientMessageTypes.GQL_ERROR:
-                onError(message.payload.errors);
+            case 'error':
                 delete this.operations[opId];
+                const { errors } = message.payload;
+                const [firstError] = errors;
+                sink.error(firstError);
                 break;
-            case ClientMessageTypes.GQL_DATA:
-                onNext(message.payload);
+            case 'data':
+                sink.next(message.payload);
         }
     }
     generateOperationId() {
         return String(++this.nextOperationId);
     }
-    send(message) {
-        this.trebuchet.send(JSON.stringify(message));
+    unsubscribe(opId) {
+        if (this.operations[opId]) {
+            delete this.operations[opId];
+            this.trebuchet.send({ id: opId, type: 'stop' });
+        }
     }
     close(reason) {
         Object.keys(this.operations).forEach((opId) => {
             this.unsubscribe(opId);
         });
-        if (!this.isTrebuchetClosed) {
-            this.trebuchet.close(reason);
-        }
+        this.trebuchet.close(reason);
     }
-    fetch(payload) {
-        return new Promise((resolve, reject) => {
+    fetch(payload, sink) {
+        if (sink) {
             const opId = this.generateOperationId();
             this.operations[opId] = {
                 id: opId,
                 payload,
-                observer: {
-                    onNext: (result) => {
-                        delete this.operations[opId];
-                        resolve(result);
-                    },
-                    onError: (errors) => {
-                        delete this.operations[opId];
-                        const firstError = Array.isArray(errors) ? errors[0] : errors;
-                        reject(firstError.message || firstError);
-                    },
-                    onCompleted: () => {
-                        delete this.operations[opId];
-                    }
-                }
+                sink
             };
-            this.send({ id: opId, type: ServerMessageTypes.GQL_START, payload });
-        });
+            this.trebuchet.send({ id: opId, type: 'start', payload });
+        }
+        else {
+            this.trebuchet.send({ type: 'start', payload });
+        }
     }
-    subscribe(payload, observer) {
+    subscribe(payload, sink) {
         const opId = this.generateOperationId();
         this.operations[opId] = {
             id: opId,
             payload,
-            observer
+            sink
         };
-        this.send({ id: opId, type: ServerMessageTypes.GQL_START, payload });
+        this.trebuchet.send({ id: opId, type: 'start', payload });
         const unsubscribe = () => {
             this.unsubscribe(opId);
         };
         return { unsubscribe };
-    }
-    unsubscribe(opId) {
-        if (this.operations[opId]) {
-            delete this.operations[opId];
-            this.send({ id: opId, type: ServerMessageTypes.GQL_STOP });
-        }
     }
 }
 /* harmony default export */ __webpack_exports__["default"] = (GQLTrebuchetClient);
@@ -247,7 +214,7 @@ class GQLTrebuchetClient {
 /*!**********************!*\
   !*** ./src/index.ts ***!
   \**********************/
-/*! exports provided: GQLHTTPClient, default, ServerMessageTypes, ClientMessageTypes */
+/*! exports provided: GQLHTTPClient, default */
 /***/ (function(module, __webpack_exports__, __webpack_require__) {
 
 "use strict";
@@ -258,25 +225,10 @@ __webpack_require__.r(__webpack_exports__);
 /* harmony import */ var _GQLTrebuchetClient__WEBPACK_IMPORTED_MODULE_1__ = __webpack_require__(/*! ./GQLTrebuchetClient */ "./src/GQLTrebuchetClient.ts");
 /* harmony reexport (safe) */ __webpack_require__.d(__webpack_exports__, "default", function() { return _GQLTrebuchetClient__WEBPACK_IMPORTED_MODULE_1__["default"]; });
 
-/* harmony reexport (safe) */ __webpack_require__.d(__webpack_exports__, "ServerMessageTypes", function() { return _GQLTrebuchetClient__WEBPACK_IMPORTED_MODULE_1__["ServerMessageTypes"]; });
-
-/* harmony reexport (safe) */ __webpack_require__.d(__webpack_exports__, "ClientMessageTypes", function() { return _GQLTrebuchetClient__WEBPACK_IMPORTED_MODULE_1__["ClientMessageTypes"]; });
+/* empty/unused harmony star reexport */
 
 
 
-
-
-
-/***/ }),
-
-/***/ "@mattkrick/trebuchet-client":
-/*!**********************************************!*\
-  !*** external "@mattkrick/trebuchet-client" ***!
-  \**********************************************/
-/*! no static exports found */
-/***/ (function(module, exports) {
-
-module.exports = require("@mattkrick/trebuchet-client");
 
 /***/ })
 

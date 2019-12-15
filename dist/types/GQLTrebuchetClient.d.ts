@@ -1,13 +1,5 @@
 import { Trebuchet } from '@mattkrick/trebuchet-client';
-export declare enum ServerMessageTypes {
-    GQL_START = "start",
-    GQL_STOP = "stop"
-}
-export declare enum ClientMessageTypes {
-    GQL_DATA = "data",
-    GQL_ERROR = "error",
-    GQL_COMPLETE = "complete"
-}
+import { Sink } from 'relay-runtime/lib/network/RelayObservable';
 export interface ErrorObj {
     name: string;
     message: string;
@@ -27,53 +19,57 @@ export interface GraphQLResult {
     data?: GraphQLData;
     errors?: Array<ErrorObj>;
 }
-export interface Observer {
-    onNext: (result: {
-        [key: string]: any;
-    }) => void;
-    onError: (error: Array<ErrorObj>) => void;
-    onCompleted: () => void;
-}
-export interface Operation {
+export interface Operation<T = any> {
     id: string;
     payload: OperationPayload;
-    observer: Observer;
+    sink: Sink<T>;
 }
 export interface Operations {
     [id: string]: Operation;
 }
 export declare type OutgoingMessage = StartMessage | StopMessage;
 export interface StartMessage {
-    type: ServerMessageTypes.GQL_START;
+    type: 'start';
     id?: string;
     payload: OperationPayload;
     connectionId?: string;
 }
 export interface StopMessage {
-    type: ServerMessageTypes.GQL_STOP;
+    type: 'stop';
     id: string;
     connectionId?: string;
 }
-export interface IncomingMessage {
+export interface IncomingDataMessage {
     id: string;
-    type: ClientMessageTypes;
+    type: 'data';
     payload: GraphQLResult;
 }
+export interface IncomingErrorMessage {
+    id: string;
+    type: 'error';
+    payload: {
+        errors: Array<ErrorObj>;
+    };
+}
+export interface IncomingCompleteMessage {
+    id: string;
+    type: 'complete';
+    payload: GraphQLResult;
+}
+export declare type IncomingMessage = IncomingCompleteMessage | IncomingDataMessage | IncomingErrorMessage;
 declare class GQLTrebuchetClient {
     trebuchet: Trebuchet;
-    isTrebuchetClosed: boolean;
     operations: Operations;
     private nextOperationId;
     constructor(trebuchet: Trebuchet);
     private dispatch;
     private generateOperationId;
-    private send;
+    private unsubscribe;
     close(reason?: string): void;
-    fetch(payload: OperationPayload): Promise<unknown>;
-    subscribe(payload: OperationPayload, observer: Observer): {
+    fetch<T = any>(payload: OperationPayload, sink?: Sink<T>): void;
+    subscribe<T = any>(payload: OperationPayload, sink: Sink<T>): {
         unsubscribe: () => void;
     };
-    private unsubscribe;
 }
 export default GQLTrebuchetClient;
 //# sourceMappingURL=GQLTrebuchetClient.d.ts.map

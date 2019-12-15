@@ -1,15 +1,5 @@
-import {Events, Trebuchet} from '@mattkrick/trebuchet-client'
-
-export enum ServerMessageTypes {
-  GQL_START = 'start',
-  GQL_STOP = 'stop'
-}
-
-export enum ClientMessageTypes {
-  GQL_DATA = 'data',
-  GQL_ERROR = 'error',
-  GQL_COMPLETE = 'complete'
-}
+import {Trebuchet} from '@mattkrick/trebuchet-client'
+import {Sink} from 'relay-runtime/lib/network/RelayObservable'
 
 export interface ErrorObj {
   name: string
@@ -34,16 +24,10 @@ export interface GraphQLResult {
   errors?: Array<ErrorObj>
 }
 
-export interface Observer {
-  onNext: (result: {[key: string]: any}) => void
-  onError: (error: Array<ErrorObj>) => void
-  onCompleted: () => void
-}
-
-export interface Operation {
+export interface Operation<T = any> {
   id: string
   payload: OperationPayload
-  observer: Observer
+  sink: Sink<T>
 }
 
 export interface Operations {
@@ -53,43 +37,50 @@ export interface Operations {
 export type OutgoingMessage = StartMessage | StopMessage
 
 export interface StartMessage {
-  type: ServerMessageTypes.GQL_START
+  type: 'start'
   id?: string
   payload: OperationPayload
   connectionId?: string
 }
 
 export interface StopMessage {
-  type: ServerMessageTypes.GQL_STOP
+  type: 'stop'
   id: string
   connectionId?: string
 }
 
-export interface IncomingMessage {
+export interface IncomingDataMessage {
   id: string
-  type: ClientMessageTypes
+  type: 'data'
   payload: GraphQLResult
 }
 
+export interface IncomingErrorMessage {
+  id: string
+  type: 'error'
+  payload: {errors: Array<ErrorObj>}
+}
+export interface IncomingCompleteMessage {
+  id: string
+  type: 'complete'
+  payload: GraphQLResult
+}
+
+export type IncomingMessage = IncomingCompleteMessage | IncomingDataMessage | IncomingErrorMessage
+
 class GQLTrebuchetClient {
-  isTrebuchetClosed: boolean = false
   operations: Operations = {}
   private nextOperationId: number = 0
 
   constructor (public trebuchet: Trebuchet) {
-    trebuchet.on(Events.DATA, (data: string | object) => {
-      this.dispatch(typeof data === 'string' ? JSON.parse(data) : data)
+    trebuchet.on('data', (data) => {
+      this.dispatch((data as unknown) as IncomingMessage)
     })
-    trebuchet.on(Events.CLOSE, ({reason}: {reason?: string}) => {
-      this.isTrebuchetClosed = true
-      this.close(reason)
-    })
-    trebuchet.on(Events.TRANSPORT_DISCONNECTED, () => {
-      // queue up the start subscription messages
+    trebuchet.on('reconnected', () => {
       Object.keys(this.operations).forEach((opId) => {
-        this.send({
+        this.trebuchet.send({
           id: opId,
-          type: ServerMessageTypes.GQL_START,
+          type: 'start',
           payload: this.operations[opId].payload
         })
       })
@@ -98,24 +89,25 @@ class GQLTrebuchetClient {
 
   private dispatch (message: IncomingMessage) {
     const {id: opId} = message
-    if (!this.operations[opId]) {
-      this.unsubscribe(opId)
-      return
-    }
-    const {onCompleted, onError, onNext} = this.operations[opId].observer
+    const operation = this.operations[opId]
+    if (!operation) return
+    const {sink} = operation
     switch (message.type) {
-      case ClientMessageTypes.GQL_COMPLETE:
-        onCompleted()
+      case 'complete':
         delete this.operations[opId]
+        if (message.payload) {
+          sink.next(message.payload)
+        }
+        sink.complete()
         break
-
-      case ClientMessageTypes.GQL_ERROR:
-        onError(message.payload.errors!)
+      case 'error':
         delete this.operations[opId]
+        const {errors} = message.payload
+        const [firstError] = errors
+        sink.error(firstError)
         break
-
-      case ClientMessageTypes.GQL_DATA:
-        onNext(message.payload)
+      case 'data':
+        sink.next(message.payload)
     }
   }
 
@@ -123,65 +115,47 @@ class GQLTrebuchetClient {
     return String(++this.nextOperationId)
   }
 
-  private send (message: OutgoingMessage) {
-    this.trebuchet.send(JSON.stringify(message))
+  private unsubscribe (opId: string) {
+    if (this.operations[opId]) {
+      delete this.operations[opId]
+      this.trebuchet.send({id: opId, type: 'stop'})
+    }
   }
 
   close (reason?: string) {
     Object.keys(this.operations).forEach((opId) => {
       this.unsubscribe(opId)
     })
-    if (!this.isTrebuchetClosed) {
-      this.trebuchet.close(reason)
-    }
+    this.trebuchet.close(reason)
   }
 
-  fetch (payload: OperationPayload) {
-    return new Promise((resolve, reject) => {
+  fetch<T = any> (payload: OperationPayload, sink?: Sink<T>) {
+    if (sink) {
       const opId = this.generateOperationId()
       this.operations[opId] = {
         id: opId,
         payload,
-        observer: {
-          onNext: (result) => {
-            delete this.operations[opId]
-            resolve(result)
-          },
-          onError: (errors) => {
-            delete this.operations[opId]
-            // no UI needs to handle a possible array of cryptic errors. change my mind
-            const firstError = Array.isArray(errors) ? errors[0] : errors
-            reject(firstError.message || firstError)
-          },
-          onCompleted: () => {
-            // server should never send this for a fetch
-            delete this.operations[opId]
-          }
-        }
+        sink
       }
-      this.send({id: opId, type: ServerMessageTypes.GQL_START, payload})
-    })
+      this.trebuchet.send({id: opId, type: 'start', payload})
+    } else {
+      this.trebuchet.send({type: 'start', payload})
+    }
   }
 
-  subscribe (payload: OperationPayload, observer: Observer) {
+  subscribe<T = any> (payload: OperationPayload, sink: Sink<T>) {
     const opId = this.generateOperationId()
     this.operations[opId] = {
       id: opId,
       payload,
-      observer
+      sink
     }
-    this.send({id: opId, type: ServerMessageTypes.GQL_START, payload})
+    this.trebuchet.send({id: opId, type: 'start', payload})
+
     const unsubscribe = () => {
       this.unsubscribe(opId)
     }
     return {unsubscribe}
-  }
-
-  private unsubscribe (opId: string) {
-    if (this.operations[opId]) {
-      delete this.operations[opId]
-      this.send({id: opId, type: ServerMessageTypes.GQL_STOP})
-    }
   }
 }
 
