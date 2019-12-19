@@ -102,9 +102,20 @@ class GQLHTTPClient {
         this.fetchData = fetchData;
     }
     async fetch(payload, sink) {
-        const res = await this.fetchData({ type: 'start', payload });
-        sink.next(res.payload);
-        sink.complete();
+        var _a;
+        try {
+            const res = await this.fetchData({ type: 'start', payload });
+            if ((_a = res) === null || _a === void 0 ? void 0 : _a.payload) {
+                sink.next(res.payload);
+                sink.complete();
+            }
+            else {
+                throw new Error('No payload received');
+            }
+        }
+        catch (e) {
+            sink.error(e);
+        }
     }
 }
 
