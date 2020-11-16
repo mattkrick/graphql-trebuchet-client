@@ -13,6 +13,9 @@ export interface OperationPayload {
   variables?: {
     [key: string]: any
   }
+  uploadables?: {
+    [key: string]: File | Blob
+  }
 }
 
 export interface GraphQLData {
