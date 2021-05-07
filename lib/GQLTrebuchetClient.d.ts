@@ -70,7 +70,7 @@ declare class GQLTrebuchetClient {
     private generateOperationId;
     private unsubscribe;
     close(reason?: string): void;
-    fetch(payload: OperationPayload, sink?: Sink<any> | undefined | null): void;
+    fetch(payload: OperationPayload, sink?: Sink<any> | null): void;
     subscribe(payload: OperationPayload, sink: Sink<any>): {
         unsubscribe: () => void;
     };
