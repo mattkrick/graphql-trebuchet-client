@@ -23,6 +23,7 @@ export interface GraphQLResult {
     errors?: Array<ErrorObj>;
 }
 export interface Operation<T = any> {
+    isSubscription: boolean;
     id: string;
     payload: OperationPayload;
     sink: Sink<T>;
@@ -69,8 +70,8 @@ declare class GQLTrebuchetClient {
     private generateOperationId;
     private unsubscribe;
     close(reason?: string): void;
-    fetch<T = any>(payload: OperationPayload, sink?: Sink<T>): void;
-    subscribe<T = any>(payload: OperationPayload, sink: Sink<T>): {
+    fetch(payload: OperationPayload, sink?: Sink<any> | undefined | null): void;
+    subscribe(payload: OperationPayload, sink: Sink<any>): {
         unsubscribe: () => void;
     };
 }
