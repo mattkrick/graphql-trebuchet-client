@@ -138,7 +138,7 @@ class GQLTrebuchetClient {
     this.trebuchet.close(reason)
   }
 
-  fetch(payload: OperationPayload, sink?: Sink<any> | undefined | null) {
+  fetch(payload: OperationPayload, sink?: Sink<any> | null) {
     if (sink) {
       const opId = this.generateOperationId()
       this.operations[opId] = {
