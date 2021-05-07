@@ -6,4 +6,3 @@ export default class GQLHTTPClient {
     constructor(fetchData: FetchData);
     fetch(payload: OperationPayload, sink: Sink<any>): Promise<void>;
 }
-//# sourceMappingURL=GQLHTTPClient.d.ts.map

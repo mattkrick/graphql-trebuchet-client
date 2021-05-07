@@ -75,4 +75,3 @@ declare class GQLTrebuchetClient {
     };
 }
 export default GQLTrebuchetClient;
-//# sourceMappingURL=GQLTrebuchetClient.d.ts.map
