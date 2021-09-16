@@ -8,7 +8,11 @@ export default class GQLHTTPClient {
 
   async fetch(payload: OperationPayload, sink?: Sink<any> | null) {
     try {
-      const res = await this.fetchData({type: 'start', payload})
+      const res = await this.fetchData({
+        type: 'start',
+        payload,
+        ...(sink && {id: '0'}),
+      })
       if (!sink) return
       if (res?.payload) {
         sink.next(res.payload)
@@ -18,7 +22,8 @@ export default class GQLHTTPClient {
       }
     } catch (e) {
       if (!sink) return
-      sink.error(e)
+      const error = e instanceof Error ? e : new Error((e as any)?.message ?? 'Network error')
+      sink.error(error)
     }
   }
 }

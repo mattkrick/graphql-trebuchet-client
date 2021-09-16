@@ -24,7 +24,9 @@ This gets through them, one way or another.
 ## What's the protocol?
 
 From the client:
-- An operation has an `id`, `type`, and `payload`
+- An operations MAY have an `id` string
+- If `id` is provided, the server MUST reply, else it MAY not (e.g. analytics mutation)
+- An operation has a `type`, and `payload`
 - The type MUST be `start` or `stop`
 - a `start` payload MAY include a `query` param, or a `documentId` param (for persisted queries)
 - a `stop` operation MUST include the `id` of the operation to unsubscribe from
@@ -36,7 +38,7 @@ From the server:
 - The `type` MUST be `data`, `error`, or `complete`
 - The payload MUST be a GraphQLResult (`{data, errors}`)
 - If the `type` is `data`, the client MUST call `sink.next`
-- If the `type` is `error`, the client MUST call `sink.error`
+- If the `type` is `error`, the client MUST call `sink.error` with an `Error` instance
 - If the `type` is `complete`, the client MUST call `sink.next` iif a payload is present and call `sink.complete` after
 
 ## API

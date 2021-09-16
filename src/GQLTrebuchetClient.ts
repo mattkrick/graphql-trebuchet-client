@@ -113,7 +113,7 @@ class GQLTrebuchetClient {
         delete this.operations[opId]
         const {errors} = message.payload
         const [firstError] = errors
-        sink.error(firstError)
+        sink.error(new Error(firstError.message))
         break
       case 'data':
         sink.next(message.payload)
