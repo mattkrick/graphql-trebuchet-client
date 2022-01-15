@@ -1,5 +1,12 @@
 import { Trebuchet } from '@mattkrick/trebuchet-client';
+import { CacheConfig } from 'relay-runtime';
 import { Sink } from 'relay-runtime/lib/network/RelayObservable';
+interface TrebuchetCacheConfig extends CacheConfig {
+    metadata?: {
+        casualOrderingGroup?: string;
+        [key: string]: unknown;
+    };
+}
 export interface ErrorObj {
     name: string;
     message: string;
@@ -14,6 +21,7 @@ export interface OperationPayload {
     uploadables?: {
         [key: string]: File | Blob;
     };
+    cacheConfig?: TrebuchetCacheConfig;
 }
 export interface GraphQLData {
     [key: string]: any;
@@ -65,6 +73,7 @@ declare class GQLTrebuchetClient {
     trebuchet: Trebuchet;
     operations: Operations;
     private nextOperationId;
+    private pendingMessages;
     constructor(trebuchet: Trebuchet);
     private dispatch;
     private generateOperationId;
