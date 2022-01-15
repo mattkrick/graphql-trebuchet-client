@@ -1,5 +1,13 @@
-import {Trebuchet} from '@mattkrick/trebuchet-client'
-import {Sink} from 'relay-runtime/lib/network/RelayObservable'
+import { Trebuchet } from '@mattkrick/trebuchet-client'
+import { CacheConfig } from 'relay-runtime'
+import { Sink } from 'relay-runtime/lib/network/RelayObservable'
+
+interface TrebuchetCacheConfig extends CacheConfig {
+  metadata?: {
+    casualOrderingGroup?: string
+    [key: string]: unknown
+  }
+}
 
 export interface ErrorObj {
   name: string
@@ -16,6 +24,7 @@ export interface OperationPayload {
   uploadables?: {
     [key: string]: File | Blob
   }
+  cacheConfig?: TrebuchetCacheConfig
 }
 
 export interface GraphQLData {
@@ -76,10 +85,11 @@ export type IncomingMessage = IncomingCompleteMessage | IncomingDataMessage | In
 class GQLTrebuchetClient {
   operations: Operations = {}
   private nextOperationId = 0
+  private pendingMessages = [] as IncomingMessage[]
 
   constructor(public trebuchet: Trebuchet) {
     trebuchet.on('data', (data) => {
-      this.dispatch((data as unknown) as IncomingMessage)
+      this.dispatch(data as unknown as IncomingMessage)
     })
     trebuchet.on('reconnected', () => {
       Object.keys(this.operations).forEach((opId) => {
@@ -100,7 +110,33 @@ class GQLTrebuchetClient {
     const {id: opId} = message
     const operation = this.operations[opId]
     if (!operation) return
-    const {sink} = operation
+    const {sink, payload} = operation
+    const casualOrderingGroup = payload.cacheConfig?.metadata?.casualOrderingGroup ?? null
+    if (casualOrderingGroup) {
+      const previousOperation = Object.keys(this.operations).find(
+        (id) =>
+          id < opId &&
+          this.operations[id].payload.cacheConfig?.metadata?.casualOrderingGroup ===
+            casualOrderingGroup,
+      )
+      if (previousOperation) {
+        this.pendingMessages.push(message)
+        return
+      } else if (this.pendingMessages.length > 0) {
+        const messagesToCheck = this.pendingMessages.filter(
+          (message) =>
+            this.operations[message.id].payload.cacheConfig?.metadata?.casualOrderingGroup ===
+            casualOrderingGroup,
+        )
+        const messageOpIds = messagesToCheck.map((message) => Number(message.id))
+        const nextMessageId = String(Math.min(...messageOpIds))
+        const messageIdxToFlush = this.pendingMessages.findIndex(
+          (message) => message.id === nextMessageId,
+        )
+        const [messageToFlush] = this.pendingMessages.splice(messageIdxToFlush, 1)
+        this.dispatch(messageToFlush)
+      }
+    }
     switch (message.type) {
       case 'complete':
         delete this.operations[opId]

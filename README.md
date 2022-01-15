@@ -20,10 +20,12 @@ This gets through them, one way or another.
 - This lib won't fail silently when WebSockets fail
 - This lib has a pure separation of concerns between connectivity & GraphQL messages
 - Other libs do too much so they can lock you into their monolithic trap (don't get got!)
+- Supports enforced casual ordering
 
 ## What's the protocol?
 
 From the client:
+
 - An operations MAY have an `id` string
 - If `id` is provided, the server MUST reply, else it MAY not (e.g. analytics mutation)
 - An operation has a `type`, and `payload`
@@ -33,6 +35,7 @@ From the client:
 - The client MUST send a single operation (batching is left up to the transport)
 
 From the server:
+
 - An operation has an `id`, `type`, and `payload`
 - The `id` MUST match the `id` of the request
 - The `type` MUST be `data`, `error`, or `complete`
@@ -44,9 +47,10 @@ From the server:
 ## API
 
 These are the methods you'll probably want to call.
-- `fetch({query, variables}, sink)`: Call this for all queries/mutations
+
+- `fetch({query, cacheConfig, variables}, sink)`: Call this for all queries/mutations
 - `subscribe({query, variables}, sink): Disposable`: Call this to start a subscription.
-Call the return value to stop it.
+  Call the return value to stop it.
 - `close()`: Unsubscribe from everything and prevent a reconnect. Useful for logouts.
 
 ## Example
@@ -59,9 +63,12 @@ import GQLTrebuchetClient, {GQLHTTPClient} from '@mattkrick/graphql-trebuchet-cl
 const trebuchet = await getTrebuchet(settings)
 const transport = new GQLTrebuchetClient(trebuchet)
 const myFetch = (query, variables) => {
+  // If 2 mutations with the same casualOrderingGroup get called in order A,B,
+  // then the server response for A is guaranteed to get dispatched before B
+  const cacheConfig = {metadata: {casualOrderingGroup: 'orderedStochasticMutations'}}
   // note using a promise is easy to get started, but means you can't return multiple responses
   return new Promise((resolve, reject) => {
-    return transport.fetch({query, variables}, {
+    return transport.fetch({query, cacheConfig, variables}, {
       next(result): {
         resolve(result)
       },
